@@ -1,8 +1,18 @@
-﻿namespace MySQLRepairTool
+﻿using System;
+using System.IO;
+using System.Windows.Forms;
+
+namespace MySQLRepairTool
 {
-    public class RepairService
+    public interface IDialogService
     {
-        private static void ShowSuccessDialog()
+        void ShowSuccess();
+        void ShowError(string message);
+    }
+
+    public class WinFormsDialogService : IDialogService
+    {
+        public void ShowSuccess()
         {
             MessageBox.Show(
                 "Successfully repaired XAMPP MySQL!",
@@ -11,13 +21,23 @@
                 MessageBoxIcon.Information);
         }
 
-        private static void ShowErrorDialog(string message)
+        public void ShowError(string message)
         {
             MessageBox.Show(
                 message,
                 "Repair Error",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
+        }
+    }
+
+    public class RepairService
+    {
+        private readonly IDialogService _dialogService;
+
+        public RepairService(IDialogService? dialogService = null)
+        {
+            _dialogService = dialogService ?? new WinFormsDialogService();
         }
 
         private static void CopyDirectory(string sourceDir, string destinationDir, bool recursive)
@@ -58,32 +78,40 @@
             {
                 if (string.IsNullOrWhiteSpace(mysqlPath))
                 {
-                    ShowErrorDialog("Invalid MySQL path.");
+                    _dialogService.ShowError("Invalid MySQL path.");
                     return;
                 }
 
-                if (!mysqlPath
-                    .ToLower()
-                    .Contains("xampp", StringComparison.CurrentCultureIgnoreCase))
+                if (!mysqlPath.Contains("xampp", StringComparison.OrdinalIgnoreCase))
                 {
-                    ShowErrorDialog("Selected folder is not a XAMPP directory.");
+                    _dialogService.ShowError("Selected folder is not a XAMPP directory.");
                     return;
                 }
 
                 string backupPath = Path.Combine(mysqlPath, "backup");
                 string dataPath = Path.Combine(mysqlPath, "data");
+                string dataOldPath = Path.Combine(mysqlPath, "data_old");
 
                 if (!Directory.Exists(backupPath))
                 {
-                    ShowErrorDialog("Backup folder not found.");
+                    _dialogService.ShowError("Backup folder not found.");
                     return;
                 }
 
                 if (!Directory.Exists(dataPath))
                 {
-                    ShowErrorDialog("Data folder not found.");
+                    _dialogService.ShowError("Data folder not found.");
                     return;
                 }
+
+                // =========================
+                // MAKE A COPY OF DATA FOLDER
+                // =========================
+                if (Directory.Exists(dataOldPath))
+                {
+                    Directory.Delete(dataOldPath, true);
+                }
+                CopyDirectory(dataPath, dataOldPath, true);
 
                 // =========================
                 // DELETE OLD FILES
@@ -105,12 +133,12 @@
                 foreach (string dir in Directory.GetDirectories(dataPath))
                 {
                     string dirName = Path.GetFileName(dir);
-                    string[] dirsToTransferNames = [
-                            "mysql",
-                            "performance_schema",
-                            "phpmyadmin",
-                            "test"
-                        ];
+                    string[] dirsToTransferNames = new[] {
+                        "mysql",
+                        "performance_schema",
+                        "phpmyadmin",
+                        "test"
+                    };
 
                     for (int i = 0; i < dirsToTransferNames.Length; i++)
                     {
@@ -150,11 +178,11 @@
                     CopyDirectory(dir, destDir, true);
                 }
 
-                ShowSuccessDialog();
+                _dialogService.ShowSuccess();
             }
             catch (Exception ex)
             {
-                ShowErrorDialog(ex.Message);
+                _dialogService.ShowError(ex.Message);
             }
         }
     }
